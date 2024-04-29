@@ -1,0 +1,515 @@
+---
+title: "PSY6422 final project"
+author: "JUNHAO LU"
+date: "29/04/2024"
+output:
+  html_document:
+    df_print: paged
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# 1.Data sources
+
+The data source is from the UCI machine Learning Repository for the Air Quality dataset, which contains 9,357 instances of average hourly response from five metal oxide chemical sensor arrays embedded in the air quality Chemical multi-sensor device. The device is located on a road in a heavily polluted area in an Italian city. The data was recorded from March 2004 to February 2005 (one year) and represents the longest free-of-charge record of responses from field-deployed air quality chemical sensor devices. Ground Truth Average hourly carbon monoxide, non-metallic hydrocarbons, benzene, total nitrogen oxides (NOx) and nitrogen dioxide (NO2).
+
+## 1.1 Look at the first few lines of the source material
+```{r echo=FALSE, results='asis'}
+library(knitr)
+library(readxl)
+data$DateTime <- as.POSIXct(paste(data$Date, data$Time), format="%d/%m/%Y %H:%M:%S") 
+kable(head(data), caption = "Top 6 rows of orginal dataset")
+```
+
+## 1.2 Data variable definition
+
+0.Date (DD/MM/YYYY)
+
+1.Time (HH:MM:SS)
+
+2.True hourly averaged concentration CO in mg/m\^3 (reference analyzer)
+
+3.PT08.S1 (tin oxide) hourly averaged sensor response (nominally CO targeted)
+
+4.True hourly averaged overall Non Metanic HydroCarbons concentration in
+microg/m\^3 (reference analyzer)
+
+5.True hourly averaged Benzene concentration in microg/m\^3 (reference analyzer)
+
+6 PT08.S2 (titania) hourly averaged sensor response (nominally NMHC targeted)
+
+7.True hourly averaged NOx concentration in ppb (reference analyzer)
+
+8.PT08.S3 (tungsten oxide) hourly averaged sensor response (nominally NOx targeted)
+
+9.True hourly averaged NO2 concentration in microg/m\^3 (reference analyzer)
+
+10.PT08.S4 (tungsten oxide) hourly averaged sensor response (nominally NO2 targeted)
+
+11.PT08.S5 (indium oxide) hourly averaged sensor response (nominally O3 targeted)
+
+12.Temperature
+
+13.Relative Humidity (%)
+
+14.AH(Absolute Humidity)
+
+# 2 Research problem
+
+My visualization will try to solve the following problems:
+
+1. Observe the concentration change of each variable responder collected over time.
+
+2. Observe the correlation between each variable to understand the strength of the correlation between them.
+
+3. Observe in more detail whether the response value of each pollutant is seasonal.
+4. Observe the concentration distribution of each pollutant every hour of every day in one day.
+
+5. Observe the specific concentration value distribution of each pollutant every hour in a day.
+
+## 2.1 Data preparation
+
+First of all, the data set is preprocessed, in which missing values are marked as -200, and each indicator will have missing values. First, the proportion of missing values in each indicator in the total number of the indicator is determined. The result shows that the missing values in NMHC(GT) account for more than 90%. It indicates that the data of this indicator has no reference for the overall data set, so this indicator is deleted for the feasibility of the analysis and visualization results of the overall data set. At the same time, since this data set is a data set that changes with time, the average value of the data values before and after the missing value is taken is filled. Then the date and time in the data set do not conform to the format of R, so the relative date and time merge processing is carried out. The collated dataset shows the first 6 rows:
+
+```{r echo=FALSE, results='asis'}
+library(knitr)
+library(readxl)
+data$DateTime <- as.POSIXct(paste(data$Date, data$Time), format="%d/%m/%Y %H:%M:%S") 
+kable(head(data), caption = "Top 6 rows of dataset")
+```
+# 3 Visualization
+
+## 3.1 Observe the concentration change over time collected by each variable responder
+```{r 1-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$DateTime <- as.POSIXct(paste(data$Date, data$Time),
+format="%d/%m/%Y %H:%M:%S") 
+p <- ggplot(data, aes(x=DateTime)) +
+geom_line(aes(y=PT08.S2.NMHC., colour="PT08.S2(NMHC)")) +
+geom_line(aes(y=PT08.S3.NOx., colour="PT08.S3(NOx)")) +
+geom_line(aes(y=PT08.S5.O3., colour="PT08.S5(O3)")) +
+geom_line(aes(y=PT08.S4.NO2., colour="PT08.S4(NO2)")) +
+geom_line(aes(y=PT08.S1.CO., colour="PT08.S1(CO)")) + labs(title="Time
+Series of PT08.S2(NMHC),PT08.S3(NOx),PT08.S5(O3),PT08.S4(NO2)
+andPT08.S1(CO) Concentrations", x="Date", y="Concentration") +
+scale_colour_manual(values=c("PT08.S2(NMHC)"="blue","PT08.S3(NOx)"="red","PT08.S5(O3)"="green","PT08.S4(NO2)"="purple","PT08.S1(CO)"="orange"))
+
+p_dynamic <- ggplotly(p)
+p_dynamic
+```
+As can be seen from the figure, the response value of carbon monoxide has significant peaks at certain time periods, which may indicate that the concentration of carbon monoxide in the air is higher during these time periods. In addition, these peaks may be related to factors such as traffic peaks or industrial emissions. The NMHC response is generally stable, but there are still some spikes, which may indicate that the concentration of organic pollutants in the air increases in a short time. Total non-methane hydrocarbons are usually derived from combustion processes and the use of some solvents. The response value of the nitrogen oxide (NOx) sensor can be observed with significant volatility. These fluctuations reflect changes over time in the concentration of nitrogen oxides, a type of pollutant that comes mainly from vehicle exhaust and certain industrial activities. The response plot of the nitrogen dioxide (NO2) sensor also shows fluctuations over time, similar to the fluctuation pattern of NOx. Nitrogen dioxide is one of the main components of nitrogen oxides, also mainly from vehicle emissions and industrial emissions. The ozone (O3) sensor response diagram shows that ozone levels fluctuate over a range. Ozone production is related to the response of sunlight and other air pollutants, so changes in its concentration may be related to daytime temperature and sunlight exposure.
+
+## 3.2 Look at the correlation between each variable and see how strong the correlation is
+```{r 2-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$DateTime <- as.POSIXct(paste(data$Date, data$Time),
+format="%d/%m/%Y %H:%M:%S") 
+cor_matrix <- cor(data[, sapply(data, is.numeric)], use="complete.obs")
+
+
+melted_cor_matrix <- melt(cor_matrix)
+
+# Plot the correlation coefficients
+ggplot(melted_cor_matrix, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Pearson\nCorrelation") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = '', y = '', title = 'Correlation Matrix') +
+  coord_fixed()
+```
+This graph shows the correlation coefficient matrix between different air indicators. The depth of the color indicates the size of the correlation coefficient, blue represents negative correlation, red represents positive correlation, and the darker the color indicates stronger correlation. From this graph, several key points can be observed:
+
+1. The correlation between C6H6(GT) and PT08.S2(NMHC) is very strong, which is to be expected, as they both correlate with the concentration of volatile organic compounds.
+
+2.PT08.S1(CO) also showed a strong positive correlation with C6H6(GT) and PT08.S2(NMHC), which may indicate a common source between carbon monoxide and volatile organic compounds in air quality data, such as vehicle emissions.
+
+3.PT08.S3(NOx) showed some negative correlation with C6H6(GT) and PT08.S2(NMHC), possibly because PT08.S3(NOx) sensors are more sensitive to environmental factors that can reduce the concentration of these compounds, such as temperature and humidity.
+
+4. The correlation between temperature (T) and NOx(GT) and NO2(GT) appears to be less strong, which may mean that temperature has less direct effect on these specific pollutants.
+
+5. Relative humidity (RH) is negatively correlated with most pollutant indicators, especially C6H6(GT) and PT08.S2(NMHC). This suggests that higher humidity may be associated with lower concentrations of these pollutants.
+
+
+
+## 3.3 In more detail, observe whether there is seasonality in the response value of each pollutant
+
+```{r 3-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$DateTime <- as.POSIXct(paste(data$Date, data$Time),
+format="%d/%m/%Y %H:%M:%S") 
+data$Month <- month(data$Datetime)
+data$Hour <- hour(data$Datetime)
+
+monthly_data <- data %>%
+  group_by(Month) %>%
+  summarise(
+    Avg_PT08.S1_CO = mean(PT08.S1.CO., na.rm = TRUE),
+    Avg_PT08.S2_NMHC = mean(PT08.S2.NMHC., na.rm = TRUE),
+    Avg_PT08.S3_NOx = mean(PT08.S3.NOx., na.rm = TRUE),
+    Avg_PT08.S4_NO2 = mean(PT08.S4.NO2., na.rm = TRUE),
+    Avg_PT08.S5_O3 = mean(PT08.S5.O3., na.rm = TRUE)
+  )
+
+ggplot(monthly_data, aes(x = Month)) +
+  geom_line(aes(y = Avg_PT08.S1_CO, colour = "CO sensor")) +
+  geom_line(aes(y = Avg_PT08.S2_NMHC, colour = "NMHC sensor")) +
+  geom_line(aes(y = Avg_PT08.S3_NOx, colour = "NOx sensor")) +
+  geom_line(aes(y = Avg_PT08.S4_NO2, colour = "NO2 sensor")) +
+  geom_line(aes(y = Avg_PT08.S5_O3, colour = "O3 sensor")) +
+  labs(title = "Seasonal Trends of Pollutant Sensor Responses by Month",
+       x = "Month", y = "Average Sensor Response") +
+  scale_colour_manual(values = c("red", "green", "blue", "purple", "orange")) +
+  theme_minimal()
+```
+As can be seen from the figure:
+
+1. The response values of PT08.S1(CO) and PT08.S5(O3) fluctuate slightly in some months, but there is no obvious seasonality in the whole.
+
+2. The response of PT08.S2(NMHC) and PT08.S4(NO2) increased significantly in the summer months (May-August), which may be related to the increased light and temperature during these months, affecting the chemical reaction rate and VOC emissions.
+
+3. The response of PT08.S3(NOx) is slightly improved in winter, which may be related to the increase in winter heating and traffic.
+
+## 3.4 The distribution of daily concentration response values for each pollutant was observed over a 12-month period
+
+```{r 4-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$Datetime <- as.POSIXct(data$Datetime,format="%d/%m/%Y %H:%M:%S")
+data$Year <- year(data$Datetime)
+data$Month <- month(data$Datetime)
+data$Day <- day(data$Datetime)
+
+p <- ggplot() + theme_bw() + theme(aspect.ratio = 1)
+
+
+for(i in 1:12){
+  monthly_data <- subset(data, Month == i)
+  p <- p + geom_point(data = monthly_data,
+                      aes(x = Day, y = `PT08.S1.CO.`),
+                      alpha = 0.6) +
+    facet_wrap(~Month, scales = 'free_x') +
+    labs(title = "Monthly Pollutant Concentration Distributions",
+         x = "Day of the Month",
+         y = "Pollutant Concentration (PT08(CO))") +
+    theme(strip.text.x = element_text(size = 8))
+}
+print(p)
+```
+
+```{r 5-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$Datetime <- as.POSIXct(data$Datetime,format="%d/%m/%Y %H:%M:%S")
+data$Year <- year(data$Datetime)
+data$Month <- month(data$Datetime)
+data$Day <- day(data$Datetime)
+
+p <- ggplot() + theme_bw() + theme(aspect.ratio = 1)
+
+
+for(i in 1:12){
+  monthly_data <- subset(data, Month == i)
+  p <- p + geom_point(data = monthly_data,
+                      aes(x = Day, y = `PT08.S2.NMHC.`),
+                      alpha = 0.6) +
+    facet_wrap(~Month, scales = 'free_x') +
+    labs(title = "Monthly Pollutant Concentration Distributions",
+         x = "Day of the Month",
+         y = "Pollutant Concentration (PT08(NMHC))") +
+    theme(strip.text.x = element_text(size = 8))
+}
+print(p)
+```
+
+```{r 6-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$Datetime <- as.POSIXct(data$Datetime,format="%d/%m/%Y %H:%M:%S")
+data$Year <- year(data$Datetime)
+data$Month <- month(data$Datetime)
+data$Day <- day(data$Datetime)
+
+p <- ggplot() + theme_bw() + theme(aspect.ratio = 1)
+
+
+for(i in 1:12){
+  monthly_data <- subset(data, Month == i)
+  p <- p + geom_point(data = monthly_data,
+                      aes(x = Day, y = `PT08.S3.NOx.`),
+                      alpha = 0.6) +
+    facet_wrap(~Month, scales = 'free_x') +
+    labs(title = "Monthly Pollutant Concentration Distributions",
+         x = "Day of the Month",
+         y = "Pollutant Concentration (PT08(NOx))") +
+    theme(strip.text.x = element_text(size = 8))
+}
+print(p)
+```
+
+```{r 7-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$Datetime <- as.POSIXct(data$Datetime,format="%d/%m/%Y %H:%M:%S")
+data$Year <- year(data$Datetime)
+data$Month <- month(data$Datetime)
+data$Day <- day(data$Datetime)
+
+p <- ggplot() + theme_bw() + theme(aspect.ratio = 1)
+
+
+for(i in 1:12){
+  monthly_data <- subset(data, Month == i)
+  p <- p + geom_point(data = monthly_data,
+                      aes(x = Day, y = `PT08.S4.NO2.`),
+                      alpha = 0.6) +
+    facet_wrap(~Month, scales = 'free_x') +
+    labs(title = "Monthly Pollutant Concentration Distributions",
+         x = "Day of the Month",
+         y = "Pollutant Concentration (PT08(NO2))") +
+    theme(strip.text.x = element_text(size = 8))
+}
+print(p)
+```
+
+```{r 8-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+data$Datetime <- as.POSIXct(data$Datetime,format="%d/%m/%Y %H:%M:%S")
+data$Year <- year(data$Datetime)
+data$Month <- month(data$Datetime)
+data$Day <- day(data$Datetime)
+
+p <- ggplot() + theme_bw() + theme(aspect.ratio = 1)
+
+# Generate a graph for each month
+for(i in 1:12){
+  monthly_data <- subset(data, Month == i)
+  p <- p + geom_point(data = monthly_data,
+                      aes(x = Day, y = `PT08.S5.O3.`),
+                      alpha = 0.6) +
+    facet_wrap(~Month, scales = 'free_x') +
+    labs(title = "Monthly Pollutant Concentration Distributions",
+         x = "Day of the Month",
+         y = "Pollutant Concentration (PT08(O3))") +
+    theme(strip.text.x = element_text(size = 8))
+}
+print(p)
+```
+
+These are the pollution concentration distribution of pollutants every day of the month. It can be understood that the concentration distribution of each pollutant is different from day to day, but in many cases the concentration is relatively high.
+
+
+
+## 3.5 Observe the specific concentration value distribution of each pollutant every hour of the day
+
+
+```{r 9-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+
+data$Hour <- format(data$Datetime, "%H")
+
+
+hourly_avg <- aggregate(PT08.S1.CO. ~ Hour, data = data, FUN = mean)
+
+
+p <- ggplot(hourly_avg, aes(x = Hour, y = PT08.S1.CO., fill = Hour)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = rainbow(24)) +
+  theme_minimal() +
+  labs(title = "CO Values Per Hour", x = "Hour", y = "PT08(CO)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+print(p)
+```
+```{r 10-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+
+data$Hour <- format(data$Datetime, "%H")
+
+
+hourly_avg <- aggregate(PT08.S2.NMHC. ~ Hour, data = data, FUN = mean)
+
+
+p <- ggplot(hourly_avg, aes(x = Hour, y = PT08.S2.NMHC., fill = Hour)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = rainbow(24)) +
+  theme_minimal() +
+  labs(title = "NHMC Values Per Hour", x = "Hour", y = "PT08(NMHC)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+print(p)
+```
+
+```{r 11-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+
+data$Hour <- format(data$Datetime, "%H")
+
+
+hourly_avg <- aggregate(PT08.S3.NOx. ~ Hour, data = data, FUN = mean)
+
+
+p <- ggplot(hourly_avg, aes(x = Hour, y = PT08.S3.NOx., fill = Hour)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = rainbow(24)) +
+  theme_minimal() +
+  labs(title = "NOx Values Per Hour", x = "Hour", y = "PT08(NOx)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+print(p)
+```
+
+
+```{r 12-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+
+data$Hour <- format(data$Datetime, "%H")
+
+
+hourly_avg <- aggregate(PT08.S4.NO2.~ Hour, data = data, FUN = mean)
+
+
+p <- ggplot(hourly_avg, aes(x = Hour, y = PT08.S4.NO2., fill = Hour)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = rainbow(24)) +
+  theme_minimal() +
+  labs(title = "NO2 Values Per Hour", x = "Hour", y = "PT08(NO2)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+print(p)
+```
+
+
+```{r 13-plot}
+library(ggplot2)
+library(reshape2)
+library(plotly)
+library(lubridate)
+library(dplyr)
+library(caret)
+library(gridExtra)
+library(readxl)
+
+data$Hour <- format(data$Datetime, "%H")
+
+
+hourly_avg <- aggregate(PT08.S5.O3.~ Hour, data = data, FUN = mean)
+
+# Create a time-sharing bar chart
+p <- ggplot(hourly_avg, aes(x = Hour, y = PT08.S5.O3., fill = Hour)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = rainbow(24)) +
+  theme_minimal() +
+  labs(title = "O3 Values Per Hour", x = "Hour", y = "PT08(03)") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Show graphs
+print(p)
+```
+
+
+From the hourly distribution of pollutant concentrations shown in the figure, several key characteristics can be observed, which reflect the characteristics of urban air quality over time:
+
+1. The concentration of CO is usually higher in the morning and evening peak hours, which is related to the increase of road traffic. Vehicle exhaust is one of the main sources of carbon monoxide. The high values in the morning and evening may reflect the time people are commuting, especially in urban areas. During the night, the concentration gradually decreases, possibly due to reduced traffic volumes and changes in nighttime temperatures and atmospheric diffusion conditions.
+
+2. The distribution trend of NMHC is similar to that of carbon monoxide, but the concentration fluctuation may be less significant.
+
+3. The distribution of concentrations of NOx and NO2, two types of nitrogen oxides, shows a similar pattern over the course of the day, usually peaking during the morning and evening peaks. This is closely related to their road traffic and certain types of industrial activity.
+# 5. Summary
+
+In this lesson, I learned how to use R language and the package "ggplot" to learn various charts that can visualize data, and how to generate HTML files and pdf files in R. In the next step, I may have a more in-depth discussion on data, such as trying to establish relevant data models to explore potential possibilities. Learn as much as possible about the deeper features of this data.
+
+
+
+
+library(rmarkdown) 
+library(webshot2)
+library(webshot)
+render("Desktop/master/Visualisation/PSY6422 final project.Rmd", output_format = "pdf_document",output_file ="Desktop/master/Visualisation/PSY6422 final project.pdf")
